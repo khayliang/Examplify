@@ -3,6 +3,7 @@ from typing import Generator, Iterable
 from ctranslate2 import Generator as LLMGenerator
 from transformers.models.llama import LlamaTokenizerFast
 
+from server.config import Config
 from server.features.llm.types import Message
 from server.helpers import huggingface_download
 
@@ -30,6 +31,42 @@ class LLM:
     max_prompt_length: int
     static_prompt: list[str]
 
+
+    @classmethod
+    def set_static_prompt(cls, static_user_prompt: str, static_assistant_prompt: str) -> int:
+        """
+        Summary
+        -------
+        set the model's static prompt
+
+        Parameters
+        ----------
+        static_prompt (str) : the static prompt
+
+        Returns
+        -------
+        tokens (int) : the number of tokens in the static prompt
+        """
+        static_prompts: list[Message] = [{
+            'role': 'user',
+            'content': static_user_prompt
+        },
+        {
+            'role': 'assistant',
+            'content': static_assistant_prompt
+        }]
+
+        system_prompt = cls.tokeniser.apply_chat_template(
+            static_prompts,
+            add_generation_prompt=True,
+            tokenize=False
+        )
+
+        cls.static_prompt = cls.tokeniser(system_prompt).tokens()
+
+        return len(cls.static_prompt)
+
+
     @classmethod
     def load(cls):
         """
@@ -37,24 +74,19 @@ class LLM:
         -------
         download and load the language model
         """
-        model_path = huggingface_download('winstxnhdw/zephyr-7b-beta-ct2-int8')
-        cls.generator = LLMGenerator(model_path, device='cpu', compute_type='auto', inter_threads=1)
+        model_path = huggingface_download('winstxnhdw/openchat-3.5-ct2-int8')
+        device = 'cuda' if Config.use_cuda else 'cpu'
+
+        cls.generator = LLMGenerator(model_path, device=device, compute_type='auto', inter_threads=1)
         cls.tokeniser = LlamaTokenizerFast.from_pretrained(model_path, local_files_only=True)
-
-        system_prompt = cls.tokeniser.apply_chat_template((
-            {
-                'content': 'You are given the following chat history. Answer the question based on the context provided as truthfully as you are able to. If you do not know the answer, you may respond with "I do not know". What is the Baloney Detection Kit?',
-                'role': 'user'
-            },
-            {
-                'content': 'The Baloney Detection Kit is a a set of cognitive tools and techniques created by Carl Sagan, that fortify the mind against penetration by falsehoods.',
-                'role': 'assistant'
-            }
-        ), tokenize=False)
-
-        cls.static_prompt = cls.tokeniser(system_prompt).tokens()
-        cls.max_generation_length = 512
-        cls.max_prompt_length = 4096 - cls.max_generation_length - len(cls.static_prompt)
+        cls.max_generation_length = 1024
+        cls.max_prompt_length = 4096 - cls.max_generation_length - cls.set_static_prompt(
+            'You may be given the following chat history. '
+            'Answer the question based on the context (if provided) as truthfully as you are able to. '
+            'If you do not know the answer, you may respond with "I do not know". '
+            'What is the capital of Japan?',
+            'Tokyo.'
+        )
 
 
     @classmethod
@@ -72,7 +104,7 @@ class LLM:
         -------
         answer (Message | None) : the answer to the query
         """
-        prompts: str = cls.tokeniser.apply_chat_template(messages, tokenize=False)
+        prompts: str = cls.tokeniser.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         tokens = cls.tokeniser(prompts).tokens()
 
         if len(tokens) > cls.max_prompt_length:

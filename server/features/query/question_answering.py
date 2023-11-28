@@ -5,7 +5,7 @@ from server.features.llm.types import Message
 
 def question_answering(
     messages: list[Message],
-    chain: Callable[[Iterable[Message]], Message | None]
+    chain: Callable[[Iterable[Message]], Message | None] | Callable[[list[Message]], Message | None]
 ) -> list[Message]:
     """
     Summary

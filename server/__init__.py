@@ -1,12 +1,11 @@
 from importlib import import_module
-from multiprocessing import current_process
 from os import sep, walk
 from os.path import join
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from server.api import v1
+from server.api import debug, v1
 from server.config import Config
 from server.lifespans import lifespans
 
@@ -70,12 +69,8 @@ class Framework(FastAPI):
             for file_name in module_file_names
         ]
 
-        if not current_process().daemon:
-            return
-
         for module_name in module_names:
             print(f" * {self.convert_delimiters(module_name[len(api_directory):], '.', sep)} route found!")
-
 
 
 def initialise() -> Framework:
@@ -91,6 +86,7 @@ def initialise() -> Framework:
     app = Framework(lifespan=lifespans, root_path=Config.server_root_path)
     app.initialise_routes(join('server', 'api'))
     app.include_router(v1)
+    app.include_router(debug)
     app.add_middleware(
         CORSMiddleware,
         allow_credentials=True,
